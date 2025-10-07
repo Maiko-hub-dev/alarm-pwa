@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#333333">
+    <!-- iOS向け（ホーム画面全画面化） -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="./icon-192.png"> <!-- 任意：用意できれば -->
+
+  <style>
+    body {
+      background:#333; color:#fff; font-family:system-ui, -apple-system, "Segoe UI", sans-serif;
+      min-height:100vh; display:grid; place-items:center; text-align:center; padding:24px;
+    }
+    h1 { margin: 0 0 16px }
+    .count { font-size:48px; letter-spacing:0.05em; margin: 8px 0 20px }
+    button {
+      background:#ff5555; color:#fff; border:none; padding:12px 24px; font-size:18px;
+      border-radius:10px; cursor:pointer; transition:opacity .2s;
+    }
+    button:disabled { opacity:.5; cursor:not-allowed }
+  </style>
+  <script>
+
+  window.addEventListener('error', e => {
+  document.body.insertAdjacentHTML('beforeend',
+    `<pre style="white-space:pre-wrap">${e.message}\n${e.error?.stack||''}</pre>`);
+});
+window.addEventListener('unhandledrejection', e => {
+  document.body.insertAdjacentHTML('beforeend',
+    `<pre style="white-space:pre-wrap">Promise rejection: ${e.reason}</pre>`);
+});
+
+</script>
+
+  <title>20秒アラーム</title>
+
+</head>
+<body>
+  <h1>20秒後にアラームが鳴ります</h1>
+      <div class="count" id="count">00:20</div>
+    <button id="startButton">カウント開始</button>
+    <audio id="alarmSound" src="./alarm.mp3" preload="auto"></audio>
+<script>
+  // --- SW登録（そのまま） ---
+  if ('serviceWorker' in navigator) {
+    addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));
+  }
+
+  const btn   = document.getElementById('startButton');
+  const count = document.getElementById('count');
+  const alarm = document.getElementById('alarmSound');
+
+  // iOS対策：ユーザー操作直後にオーディオ権限を“確実に”解放＋mp3をプライム
+  async function primeAudio() {
+    try {
+      // Web Audioで“無音”を鳴らして権限を得る
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AC();
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.connect(ctx.destination); src.start(0);
+      await ctx.resume();
+    } catch {}
+
+    try {
+      // mp3を一瞬再生→すぐ停止してプライム（以後のplayが通りやすい）
+      alarm.volume = 1.0;
+      alarm.muted = false;
+      await alarm.play();
+      alarm.pause();
+      alarm.currentTime = 0;
+    } catch {}
+  }
+
+  // フォールバック：Web Audioでビープ音（mp3が再生拒否/読み込み失敗でも鳴る）
+  function fallbackBeep(durationSec = 1.5, freq = 880) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AC();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = 0.2;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + durationSec);
+    } catch (e) {
+      console.warn('Web Audio fallback failed:', e);
+    }
+  }
+
+  function fmt(n){ return n.toString().padStart(2,'0'); }
+
+  async function ring() {
+    try {
+      alarm.currentTime = 0;
+      await alarm.play();               // まずはmp3を試す
+    } catch (e) {
+      console.warn('mp3再生失敗。fallbackへ:', e);
+      fallbackBeep(1.8);                // 失敗時は必ずビープ
+    }
+    if (navigator.vibrate) navigator.vibrate([200,100,200]); // 対応端末のみ
+  }
+
+  btn.addEventListener('click', async () => {
+    await primeAudio();                 // ←必ず“最初のタップ”で権限を取る
+
+    btn.disabled = true;
+    let remain = 20;
+    count.textContent = `00:${fmt(remain)}`;
+
+    const t = setInterval(() => {
+      remain--;
+      count.textContent = `00:${fmt(remain)}`;
+      if (remain <= 0) {
+        clearInterval(t);
+        ring();
+        btn.disabled = false;
+        count.textContent = '00:00';
+      }
+    }, 1000);
+  });
+
+  // デバッグ：音源ロード状況が分かると原因切り分けが速い
+  alarm.addEventListener('canplaythrough', () => console.log('alarm.mp3: 読み込みOK'));
+  alarm.addEventListener('error', () => console.warn('alarm.mp3: 読み込みエラー（パス/MIME/キャッシュ確認）'));
+</script>
+
+
+</body>
+</html>
