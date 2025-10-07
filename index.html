@@ -47,7 +47,7 @@ window.addEventListener('unhandledrejection', e => {
 <script>
   // --- SW登録（そのまま） ---
   if ('serviceWorker' in navigator) {
-    addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));
+    addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js', { scope: './' }));
   }
 
   const btn   = document.getElementById('startButton');

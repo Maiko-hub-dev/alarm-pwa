@@ -1,11 +1,10 @@
-const CACHE_NAME = "alarm-v4";
+const CACHE_NAME = "alarm-cache-v4";
 const ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./alarm.mp3",
-  "./icon-192.png", // あれば
-  "./icon-512.png"  // あれば
+
 ];
 
 // インストール時に静的アセットをキャッシュ
